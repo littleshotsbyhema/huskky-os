@@ -30,6 +30,8 @@ export async function proxy(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
   const isLogin = path.startsWith("/login");
+  const isPublic = path.startsWith("/portal/");
+  if (isPublic) return response;
   if (!user && !isLogin) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";

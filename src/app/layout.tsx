@@ -23,6 +23,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <nav className="flex gap-4 text-sm text-muted">
                 <Link href="/" className="hover:text-fg">Jobs</Link>
                 <Link href="/calendar" className="hover:text-fg">Calendar</Link>
+                <Link href="/post" className="hover:text-fg">Editing</Link>
                 <Link href="/team" className="hover:text-fg">Team</Link>
               </nav>
               <div className="ml-auto flex items-center gap-3 text-sm">

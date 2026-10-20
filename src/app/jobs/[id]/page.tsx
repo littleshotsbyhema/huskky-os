@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { createClient, requireProfile } from "@/lib/supabase/server";
 import { STAGES, STAGE_LABEL, Stage, fmtDate, inr } from "@/lib/constants";
 import JobClient from "./ui";
+import PostPanel from "./post";
+import { headers } from "next/headers";
 
 
 export default async function JobPage({ params }: { params: Promise<{ id: string }> }) {
@@ -9,7 +11,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const { profile } = await requireProfile();
   const supabase = await createClient();
 
-  const [{ data: job }, { data: profiles }, { data: invites }, { data: log }] = await Promise.all([
+  const [{ data: job }, { data: profiles }, { data: invites }, { data: log }, { data: tasks }, { data: proofs }] = await Promise.all([
     supabase
       .from("jobs")
       .select(
@@ -21,7 +23,12 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     supabase.from("profiles").select("id, full_name, role, day_rate, is_freelance").eq("active", true).order("full_name"),
     supabase.from("crew_invites").select("id, full_name, role, day_rate, is_freelance").eq("active", true).is("profile_id", null).order("full_name"),
     supabase.from("job_stage_log").select("to_stage, changed_at, profiles(full_name)").eq("job_id", id).order("changed_at", { ascending: false }),
+    supabase.from("post_tasks").select("*, profiles(full_name)").eq("job_id", id),
+    supabase.from("proofs").select("id, path, filename, picked").eq("job_id", id).order("sort"),
   ]);
+  const h = await headers();
+  const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("x-forwarded-host") ?? h.get("host")}`;
+  const showPost = STAGES.indexOf(job?.stage as Stage) >= STAGES.indexOf("shot");
   if (!job) notFound();
 
   const paid = (job.payments as { amount: number }[]).reduce((a, p) => a + Number(p.amount), 0);
@@ -69,6 +76,17 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         people={people}
         isMgmt={isMgmt}
         log={(log ?? []).map((l) => ({ to_stage: l.to_stage, changed_at: l.changed_at, by: (l.profiles as unknown as { full_name: string } | null)?.full_name ?? "—" }))}
+        post={showPost ? (
+          <PostPanel
+            job={job}
+            tasks={(tasks ?? []) as never}
+            proofs={proofs ?? []}
+            team={(profiles ?? []).map((p) => ({ id: p.id, full_name: p.full_name }))}
+            meId={profile?.id ?? ""}
+            isMgmt={isMgmt}
+            origin={origin}
+          />
+        ) : null}
       />
     </div>
   );

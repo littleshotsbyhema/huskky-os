@@ -165,6 +165,10 @@ export async function setStage(jobId: string, stage: Stage): Promise<Result> {
     });
     if (il.length) return { error: "Confirm ingest for every event before moving to Post." };
   }
+  if (stage === "album") {
+    const { data: job } = await supabase.from("jobs").select("selection_submitted_at").eq("id", jobId).single();
+    if (!job?.selection_submitted_at) return { error: "Client has not submitted their album selection yet." };
+  }
   if (stage === "delivered") {
     const { data: job } = await supabase.from("jobs").select("total_amount, payments(amount)").eq("id", jobId).single();
     const paid = (job?.payments as { amount: number }[] | undefined)?.reduce((a, p) => a + Number(p.amount), 0) ?? 0;
@@ -352,5 +356,93 @@ export async function saveSla(_: Result | null, fd: FormData): Promise<Result> {
   });
   if (error) return { error: error.message };
   revalidatePath("/team");
+  return { ok: true };
+}
+
+// ---------- Post-production (Phase 2) ----------
+export async function setTaskStatus(jobId: string, taskId: string, status: "todo" | "in_progress" | "done") {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("post_tasks")
+    .update({ status, done_at: status === "done" ? new Date().toISOString() : null, updated_at: new Date().toISOString() })
+    .eq("id", taskId);
+  if (error) return { error: error.message };
+  revalidatePath(`/jobs/${jobId}`);
+  revalidatePath("/post");
+  return { ok: true };
+}
+
+export async function claimJob(jobId: string, track: "photo" | "video" | "all") {
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  let q = supabase.from("post_tasks").update({ assignee_id: auth.user?.id }).eq("job_id", jobId);
+  if (track !== "all") q = q.eq("track", track);
+  const { error } = await q;
+  if (error) return { error: error.message };
+  revalidatePath(`/jobs/${jobId}`);
+  revalidatePath("/post");
+  return { ok: true };
+}
+
+export async function setTaskAssignee(jobId: string, taskId: string, assigneeId: string | null) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("post_tasks").update({ assignee_id: assigneeId }).eq("id", taskId);
+  if (error) return { error: error.message };
+  revalidatePath(`/jobs/${jobId}`);
+  revalidatePath("/post");
+  return { ok: true };
+}
+
+export async function seedTasks(jobId: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("seed_post_tasks", { p_job: jobId });
+  if (error) return { error: error.message };
+  revalidatePath(`/jobs/${jobId}`);
+  return { ok: true };
+}
+
+export async function registerProofs(jobId: string, files: { path: string; filename: string }[]) {
+  const supabase = await createClient();
+  const { data: existing } = await supabase.from("proofs").select("sort").eq("job_id", jobId).order("sort", { ascending: false }).limit(1);
+  let sort = (existing?.[0]?.sort ?? 0) + 1;
+  const rows = files.map((f) => ({ job_id: jobId, path: f.path, filename: f.filename, sort: sort++ }));
+  const { error } = await supabase.from("proofs").insert(rows);
+  if (error) return { error: error.message };
+  revalidatePath(`/jobs/${jobId}`);
+  return { ok: true };
+}
+
+export async function deleteProof(jobId: string, proofId: string, path: string) {
+  const supabase = await createClient();
+  await supabase.storage.from("proofs").remove([path]);
+  await supabase.from("proofs").delete().eq("id", proofId);
+  revalidatePath(`/jobs/${jobId}`);
+}
+
+export async function clearProofs(jobId: string) {
+  const supabase = await createClient();
+  const { data: rows } = await supabase.from("proofs").select("path").eq("job_id", jobId);
+  if (rows?.length) await supabase.storage.from("proofs").remove(rows.map((r) => r.path));
+  await supabase.from("proofs").delete().eq("job_id", jobId);
+  await supabase.from("jobs").update({ selection_submitted_at: null }).eq("id", jobId);
+  revalidatePath(`/jobs/${jobId}`);
+}
+
+export async function reopenSelection(jobId: string) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("jobs")
+    .update({ selection_submitted_at: null, selection_reopened_at: new Date().toISOString() })
+    .eq("id", jobId);
+  if (error) return { error: error.message };
+  revalidatePath(`/jobs/${jobId}`);
+  return { ok: true };
+}
+
+export async function setGalleryUrl(jobId: string, url: string | null) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("jobs").update({ gallery_url: url }).eq("id", jobId);
+  if (error) return { error: error.message };
+  revalidatePath(`/jobs/${jobId}`);
   return { ok: true };
 }
