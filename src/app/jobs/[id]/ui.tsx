@@ -230,15 +230,15 @@ function EventForm({ jobId, ev, onDone }: { jobId: string; ev?: any; onDone?: ()
         </div>
         <div>
           <label className="f">Start</label>
-          <TimeSelect name="start_time" defaultValue={ev?.start_time?.slice(0, 5) ?? ""} />
+          <input name="start_time" type="time" step={1800} defaultValue={ev?.start_time?.slice(0, 5) ?? ""} />
         </div>
         <div>
           <label className="f">End</label>
-          <TimeSelect name="end_time" defaultValue={ev?.end_time?.slice(0, 5) ?? ""} />
+          <input name="end_time" type="time" step={1800} defaultValue={ev?.end_time?.slice(0, 5) ?? ""} />
         </div>
         <div>
           <label className="f">Call time</label>
-          <TimeSelect name="call_time" defaultValue={ev?.call_time?.slice(0, 5) ?? ""} />
+          <input name="call_time" type="time" step={1800} defaultValue={ev?.call_time?.slice(0, 5) ?? ""} />
         </div>
         <div className="md:col-span-2">
           <label className="f">Venue</label>
@@ -409,35 +409,5 @@ function JobEdit({ job, isMgmt }: { job: any; isMgmt: boolean }) {
         <button className="btn-primary" disabled={pending}>Save</button>
       </div>
     </form>
-  );
-}
-
-
-/** Hour / :00|:30 / AM|PM dropdowns that submit a single HH:MM value. */
-function TimeSelect({ name, defaultValue }: { name: string; defaultValue: string }) {
-  const parse = (v: string) => {
-    if (!v) return { h: "", m: "00", ap: "AM" };
-    const [H, M] = v.split(":").map(Number);
-    return { h: String(((H + 11) % 12) + 1), m: M >= 30 ? "30" : "00", ap: H >= 12 ? "PM" : "AM" };
-  };
-  const [t, setT] = useState(parse(defaultValue));
-  const value = t.h ? `${String((Number(t.h) % 12) + (t.ap === "PM" ? 12 : 0)).padStart(2, "0")}:${t.m}` : "";
-  const sel = "w-auto px-2 py-1.5";
-  return (
-    <div className="flex gap-1">
-      <input type="hidden" name={name} value={value} />
-      <select className={sel} value={t.h} onChange={(e) => setT({ ...t, h: e.target.value })}>
-        <option value="">--</option>
-        {Array.from({ length: 12 }, (_, i) => String(i + 1)).map((h) => <option key={h} value={h}>{h}</option>)}
-      </select>
-      <select className={sel} value={t.m} onChange={(e) => setT({ ...t, m: e.target.value })}>
-        <option value="00">:00</option>
-        <option value="30">:30</option>
-      </select>
-      <select className={sel} value={t.ap} onChange={(e) => setT({ ...t, ap: e.target.value })}>
-        <option>AM</option>
-        <option>PM</option>
-      </select>
-    </div>
   );
 }
