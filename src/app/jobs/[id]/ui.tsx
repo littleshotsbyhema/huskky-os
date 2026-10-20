@@ -156,6 +156,7 @@ function EventCard({ ev, jobId, people, isMgmt, stage }: { ev: any; jobId: strin
         {ev.start_time && <span className="text-sm text-muted">{ev.start_time.slice(0, 5)}{ev.end_time ? `–${ev.end_time.slice(0, 5)}` : ""}</span>}
         {ev.call_time && <span className="text-xs text-muted">call {ev.call_time.slice(0, 5)}</span>}
         <span className="text-sm text-muted">{ev.venue}{ev.city ? `, ${ev.city}` : ""}</span>
+        {ev.map_url && <a href={ev.map_url} target="_blank" className="text-xs text-accent hover:underline">Map ↗</a>}
         {ev.overnight && <span className="chip bg-soft">overnight</span>}
         {isMgmt && (
           <span className="ml-auto flex gap-2 text-xs">
@@ -164,6 +165,7 @@ function EventCard({ ev, jobId, people, isMgmt, stage }: { ev: any; jobId: strin
           </span>
         )}
       </div>
+      {ev.crew_notes && <p className="text-sm"><span className="text-muted">Crew required: </span>{ev.crew_notes}</p>}
       {ev.notes && <p className="text-sm text-muted">{ev.notes}</p>}
 
       {/* Crew */}
@@ -228,15 +230,15 @@ function EventForm({ jobId, ev, onDone }: { jobId: string; ev?: any; onDone?: ()
         </div>
         <div>
           <label className="f">Start</label>
-          <input name="start_time" type="time" defaultValue={ev?.start_time?.slice(0, 5) ?? ""} />
+          <input name="start_time" type="time" step={1800} defaultValue={ev?.start_time?.slice(0, 5) ?? ""} />
         </div>
         <div>
           <label className="f">End</label>
-          <input name="end_time" type="time" defaultValue={ev?.end_time?.slice(0, 5) ?? ""} />
+          <input name="end_time" type="time" step={1800} defaultValue={ev?.end_time?.slice(0, 5) ?? ""} />
         </div>
         <div>
           <label className="f">Call time</label>
-          <input name="call_time" type="time" defaultValue={ev?.call_time?.slice(0, 5) ?? ""} />
+          <input name="call_time" type="time" step={1800} defaultValue={ev?.call_time?.slice(0, 5) ?? ""} />
         </div>
         <div className="md:col-span-2">
           <label className="f">Venue</label>
@@ -247,8 +249,8 @@ function EventForm({ jobId, ev, onDone }: { jobId: string; ev?: any; onDone?: ()
           <input name="city" defaultValue={ev?.city ?? ""} />
         </div>
         <div className="md:col-span-3">
-          <label className="f">Address</label>
-          <input name="address" defaultValue={ev?.address ?? ""} />
+          <label className="f">Google Maps location (paste link)</label>
+          <input name="map_url" type="url" defaultValue={ev?.map_url ?? ""} placeholder="https://maps.app.goo.gl/..." />
         </div>
         <div>
           <label className="f">Travel cost (₹)</label>
@@ -258,7 +260,11 @@ function EventForm({ jobId, ev, onDone }: { jobId: string; ev?: any; onDone?: ()
           <input type="checkbox" name="overnight" defaultChecked={ev?.overnight} id={`ov-${ev?.id ?? "new"}`} />
           <label htmlFor={`ov-${ev?.id ?? "new"}`} className="text-sm">Overnight stay</label>
         </div>
-        <div className="md:col-span-3">
+        <div className="md:col-span-4">
+          <label className="f">Photographer crew required (free text, differs per event)</label>
+          <input name="crew_notes" defaultValue={ev?.crew_notes ?? ""} placeholder="e.g. 2 candid + 1 traditional + drone, 1 cinematographer" />
+        </div>
+        <div className="md:col-span-4">
           <label className="f">Notes</label>
           <input name="notes" defaultValue={ev?.notes ?? ""} />
         </div>
