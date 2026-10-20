@@ -106,7 +106,6 @@ export default async function Dashboard() {
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-xs text-muted">Reminders are one tap for now; they become automatic once the WhatsApp Business API is connected.</p>
         </section>
       )}
 
