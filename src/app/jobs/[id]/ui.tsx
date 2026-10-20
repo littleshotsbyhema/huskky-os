@@ -11,9 +11,9 @@ import {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Person = { key: string; name: string; role: string; rate: number | null; freelance: boolean };
-type Props = { job: any; people: Person[]; isMgmt: boolean; log: { to_stage: string; changed_at: string; by: string }[]; post?: React.ReactNode };
+type Props = { job: any; people: Person[]; isMgmt: boolean; log: { to_stage: string; changed_at: string; by: string }[]; post?: React.ReactNode; album?: React.ReactNode };
 
-export default function JobClient({ job, people, isMgmt, log, post }: Props) {
+export default function JobClient({ job, people, isMgmt, log, post, album }: Props) {
   const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const stage = job.stage as Stage;
@@ -68,6 +68,7 @@ export default function JobClient({ job, people, isMgmt, log, post }: Props) {
         </section>
 
         {post}
+        {album}
       </div>
 
       <div className="space-y-6">

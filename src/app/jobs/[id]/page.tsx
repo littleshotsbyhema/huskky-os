@@ -3,6 +3,7 @@ import { createClient, requireProfile } from "@/lib/supabase/server";
 import { STAGES, STAGE_LABEL, Stage, fmtDate, inr } from "@/lib/constants";
 import JobClient from "./ui";
 import PostPanel from "./post";
+import AlbumPanel from "./album";
 import { headers } from "next/headers";
 
 
@@ -11,7 +12,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const { profile } = await requireProfile();
   const supabase = await createClient();
 
-  const [{ data: job }, { data: profiles }, { data: invites }, { data: log }, { data: tasks }, { data: proofs }] = await Promise.all([
+  const [{ data: job }, { data: profiles }, { data: invites }, { data: log }, { data: tasks }, { data: proofs }, { data: versions }, { data: printOrders }, { data: delivery }, { data: biz }] = await Promise.all([
     supabase
       .from("jobs")
       .select(
@@ -25,10 +26,15 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     supabase.from("job_stage_log").select("to_stage, changed_at, profiles(full_name)").eq("job_id", id).order("changed_at", { ascending: false }),
     supabase.from("post_tasks").select("*, profiles(full_name)").eq("job_id", id),
     supabase.from("proofs").select("id, path, filename, picked").eq("job_id", id).order("sort"),
+    supabase.from("album_versions").select("*, album_comments(*)").eq("job_id", id).order("version"),
+    supabase.from("print_orders").select("*").eq("job_id", id).order("ordered_on"),
+    supabase.from("deliveries").select("*").eq("job_id", id).maybeSingle(),
+    supabase.from("settings").select("value").eq("key", "business").single(),
   ]);
   const h = await headers();
   const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("x-forwarded-host") ?? h.get("host")}`;
   const showPost = STAGES.indexOf(job?.stage as Stage) >= STAGES.indexOf("shot");
+  const showAlbum = STAGES.indexOf(job?.stage as Stage) >= STAGES.indexOf("post");
   if (!job) notFound();
 
   const paid = (job.payments as { amount: number }[]).reduce((a, p) => a + Number(p.amount), 0);
@@ -85,6 +91,17 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             meId={profile?.id ?? ""}
             isMgmt={isMgmt}
             origin={origin}
+          />
+        ) : null}
+        album={showAlbum ? (
+          <AlbumPanel
+            job={job}
+            versions={(versions ?? []) as never}
+            printOrders={printOrders ?? []}
+            delivery={delivery}
+            isMgmt={isMgmt}
+            origin={origin}
+            reviewUrl={((biz?.value as { review_url?: string } | null)?.review_url) ?? ""}
           />
         ) : null}
       />

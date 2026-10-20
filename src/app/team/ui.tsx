@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { deleteInvite, saveSla, upsertCrew } from "@/app/actions";
+import { deleteInvite, saveBusiness, saveSla, upsertCrew } from "@/app/actions";
 import { USER_ROLES, inr } from "@/lib/constants";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -10,9 +10,10 @@ type Props = {
   invites: any[];
   sla: { photos_working_days: number; film_days: number; album_days: number };
   me: any;
+  biz: { name?: string; review_url?: string };
 };
 
-export default function TeamClient({ profiles, invites, sla, me }: Props) {
+export default function TeamClient({ profiles, invites, sla, me, biz }: Props) {
   const isOwner = me?.role === "owner";
   const isMgmt = isOwner || me?.role === "manager";
   const [editing, setEditing] = useState<{ table: "profiles" | "crew_invites"; row: any } | null>(null);
@@ -52,6 +53,7 @@ export default function TeamClient({ profiles, invites, sla, me }: Props) {
       </section>
 
       {isOwner && <SlaForm sla={sla} />}
+      {isOwner && <BusinessForm biz={biz} />}
     </div>
   );
 }
@@ -142,6 +144,23 @@ function SlaForm({ sla }: { sla: Props["sla"] }) {
       {state?.error && <p className="text-sm text-red-700">{state.error}</p>}
       {state?.ok && <p className="text-sm text-green-700">Saved.</p>}
       <div className="flex justify-end"><button className="btn-ghost" disabled={pending}>Save SLAs</button></div>
+    </form>
+  );
+}
+
+function BusinessForm({ biz }: { biz: Props["biz"] }) {
+  const [state, action, pending] = useActionState(saveBusiness, null);
+  return (
+    <form action={action} className="card space-y-3">
+      <h2 className="text-sm font-semibold">Business</h2>
+      <div className="grid gap-2 md:grid-cols-2">
+        <div><label className="f">Name</label><input name="name" defaultValue={biz.name ?? "Huskky Photography"} /></div>
+        <div><label className="f">Google review link</label><input name="review_url" type="url" defaultValue={biz.review_url ?? ""} placeholder="https://g.page/r/.../review" /></div>
+      </div>
+      <p className="text-xs text-muted">The review link is used for the “Ask for Google review” WhatsApp button on delivered jobs.</p>
+      {state?.error && <p className="text-sm text-red-700">{state.error}</p>}
+      {state?.ok && <p className="text-sm text-green-700">Saved.</p>}
+      <div className="flex justify-end"><button className="btn-ghost" disabled={pending}>Save</button></div>
     </form>
   );
 }

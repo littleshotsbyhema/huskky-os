@@ -170,9 +170,15 @@ export async function setStage(jobId: string, stage: Stage): Promise<Result> {
     if (!job?.selection_submitted_at) return { error: "Client has not submitted their album selection yet." };
   }
   if (stage === "delivered") {
-    const { data: job } = await supabase.from("jobs").select("total_amount, payments(amount)").eq("id", jobId).single();
+    const { data: job } = await supabase.from("jobs").select("total_amount, album_photo_count, album_approved_at, payments(amount), album_versions(id)").eq("id", jobId).single();
+    const hasAlbum = !!job?.album_photo_count || ((job?.album_versions as unknown[]) ?? []).length > 0;
+    if (hasAlbum && !job?.album_approved_at) return { error: "The album has not been approved by the client yet." };
     const paid = (job?.payments as { amount: number }[] | undefined)?.reduce((a, p) => a + Number(p.amount), 0) ?? 0;
     if (paid < Number(job?.total_amount ?? 0)) return { error: `Balance outstanding: ₹${(Number(job?.total_amount) - paid).toLocaleString("en-IN")}. Record the final payment first.` };
+  }
+  if (stage === "closed") {
+    const { data: d } = await supabase.from("deliveries").select("gallery_sent_at, album_handover_at").eq("job_id", jobId).maybeSingle();
+    if (!d?.gallery_sent_at && !d?.album_handover_at) return { error: "Record the delivery (gallery sent or album handed over) before closing." };
   }
   const { error } = await supabase.from("jobs").update({ stage }).eq("id", jobId);
   if (error) return { error: error.message };
@@ -445,5 +451,124 @@ export async function setGalleryUrl(jobId: string, url: string | null) {
   const { error } = await supabase.from("jobs").update({ gallery_url: url }).eq("id", jobId);
   if (error) return { error: error.message };
   revalidatePath(`/jobs/${jobId}`);
+  return { ok: true };
+}
+
+// ---------- Album (Phase 3) ----------
+export async function createAlbumVersion(jobId: string, files: { path: string; name: string; type: string }[], note: string | null) {
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  const { data: last } = await supabase.from("album_versions").select("version").eq("job_id", jobId).order("version", { ascending: false }).limit(1);
+  const version = (last?.[0]?.version ?? 0) + 1;
+  const { error } = await supabase.from("album_versions").insert({ job_id: jobId, version, files, note, created_by: auth.user?.id });
+  if (error) return { error: error.message };
+  revalidatePath(`/jobs/${jobId}`);
+  return { ok: true };
+}
+
+export async function sendAlbumVersion(jobId: string, versionId: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("album_versions").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", versionId);
+  if (error) return { error: error.message };
+  revalidatePath(`/jobs/${jobId}`);
+  return { ok: true };
+}
+
+export async function deleteAlbumVersion(jobId: string, versionId: string, paths: string[]) {
+  const supabase = await createClient();
+  if (paths.length) await supabase.storage.from("albums").remove(paths);
+  const { error } = await supabase.from("album_versions").delete().eq("id", versionId);
+  if (error) return { error: error.message };
+  revalidatePath(`/jobs/${jobId}`);
+  return { ok: true };
+}
+
+export async function teamAlbumComment(jobId: string, versionId: string, page: number | null, body: string) {
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  const { data: me } = await supabase.from("profiles").select("full_name").eq("id", auth.user?.id ?? "").single();
+  const { error } = await supabase.from("album_comments").insert({ version_id: versionId, page, body, author: "team", author_name: me?.full_name ?? "Huskky" });
+  if (error) return { error: error.message };
+  revalidatePath(`/jobs/${jobId}`);
+  return { ok: true };
+}
+
+export async function teamApproveAlbum(jobId: string, versionId: string) {
+  const supabase = await createClient();
+  await supabase.from("album_versions").update({ status: "approved", decided_at: new Date().toISOString() }).eq("id", versionId);
+  const { error } = await supabase.from("jobs").update({ album_approved_at: new Date().toISOString() }).eq("id", jobId);
+  if (error) return { error: error.message };
+  revalidatePath(`/jobs/${jobId}`);
+  return { ok: true };
+}
+
+// ---------- Print orders ----------
+export async function upsertPrintOrder(_: Result | null, fd: FormData): Promise<Result> {
+  const supabase = await createClient();
+  const jobId = s(fd, "job_id")!;
+  const id = s(fd, "id");
+  const row = {
+    job_id: jobId,
+    vendor: s(fd, "vendor"),
+    order_ref: s(fd, "order_ref"),
+    description: s(fd, "description"),
+    ordered_on: s(fd, "ordered_on"),
+    expected_on: s(fd, "expected_on"),
+    received_on: s(fd, "received_on"),
+    cost: n(fd, "cost"),
+    notes: s(fd, "notes"),
+  };
+  const q = id ? supabase.from("print_orders").update(row).eq("id", id) : supabase.from("print_orders").insert(row);
+  const { error } = await q;
+  if (error) return { error: error.message };
+  revalidatePath(`/jobs/${jobId}`);
+  return { ok: true };
+}
+
+export async function deletePrintOrder(jobId: string, id: string) {
+  const supabase = await createClient();
+  await supabase.from("print_orders").delete().eq("id", id);
+  revalidatePath(`/jobs/${jobId}`);
+}
+
+// ---------- Delivery ----------
+export async function saveDelivery(_: Result | null, fd: FormData): Promise<Result> {
+  const supabase = await createClient();
+  const jobId = s(fd, "job_id")!;
+  const { error } = await supabase.from("deliveries").upsert(
+    {
+      job_id: jobId,
+      gallery_sent_at: s(fd, "gallery_sent_at"),
+      film_sent_at: s(fd, "film_sent_at"),
+      album_handover_at: s(fd, "album_handover_at"),
+      album_method: s(fd, "album_method"),
+      courier_ref: s(fd, "courier_ref"),
+      pendrive: fd.get("pendrive") === "on",
+      frames: s(fd, "frames"),
+      notes: s(fd, "notes"),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "job_id" }
+  );
+  if (error) return { error: error.message };
+  revalidatePath(`/jobs/${jobId}`);
+  return { ok: true };
+}
+
+export async function markReviewRequested(jobId: string) {
+  const supabase = await createClient();
+  await supabase.from("deliveries").upsert({ job_id: jobId, review_requested_at: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: "job_id" });
+  revalidatePath(`/jobs/${jobId}`);
+}
+
+export async function saveBusiness(_: Result | null, fd: FormData): Promise<Result> {
+  const supabase = await createClient();
+  const { data: cur } = await supabase.from("settings").select("value").eq("key", "business").single();
+  const { error } = await supabase.from("settings").upsert({
+    key: "business",
+    value: { ...((cur?.value as object) ?? {}), name: s(fd, "name") ?? "Huskky Photography", review_url: s(fd, "review_url") ?? "" },
+  });
+  if (error) return { error: error.message };
+  revalidatePath("/team");
   return { ok: true };
 }
