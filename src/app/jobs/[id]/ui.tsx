@@ -11,9 +11,9 @@ import {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Person = { key: string; name: string; role: string; rate: number | null; freelance: boolean };
-type Props = { job: any; people: Person[]; isMgmt: boolean; log: { to_stage: string; changed_at: string; by: string }[]; post?: React.ReactNode; album?: React.ReactNode };
+type Props = { job: any; people: Person[]; isMgmt: boolean; log: { to_stage: string; changed_at: string; by: string }[]; post?: React.ReactNode; album?: React.ReactNode; costing?: React.ReactNode };
 
-export default function JobClient({ job, people, isMgmt, log, post, album }: Props) {
+export default function JobClient({ job, people, isMgmt, log, post, album, costing }: Props) {
   const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const stage = job.stage as Stage;
@@ -103,6 +103,8 @@ export default function JobClient({ job, people, isMgmt, log, post, album }: Pro
           </ul>
           {isMgmt && <PaymentForm jobId={job.id} />}
         </section>
+
+        {costing}
 
         {/* History */}
         <section className="card text-sm">

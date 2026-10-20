@@ -25,6 +25,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <Link href="/calendar" className="hover:text-fg">Calendar</Link>
                 <Link href="/post" className="hover:text-fg">Editing</Link>
                 <Link href="/team" className="hover:text-fg">Team</Link>
+                {(profile.role === "owner" || profile.role === "manager") && <Link href="/reports" className="hover:text-fg">Reports</Link>}
               </nav>
               <div className="ml-auto flex items-center gap-3 text-sm">
                 <span className="text-muted">

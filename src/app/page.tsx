@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { headers } from "next/headers";
 import { STAGES, STAGE_LABEL, fmtDate, inr } from "@/lib/constants";
 
 
@@ -11,7 +12,7 @@ export default async function Dashboard() {
   const [{ data: jobs }, { data: upcoming }] = await Promise.all([
     supabase
       .from("jobs")
-      .select("id, job_no, title, stage, total_amount, photos_due, film_due, album_due, clients(couple_names), events(event_date), payments(amount)")
+      .select("id, job_no, title, stage, total_amount, photos_due, film_due, album_due, portal_token, selection_submitted_at, album_approved_at, clients(couple_names, phone), events(event_date), payments(amount), proofs(id, created_at), album_versions(version, status, sent_at), print_orders(expected_on, received_on, vendor), deliveries(gallery_sent_at, album_handover_at, client_confirmed_at)")
       .neq("stage", "closed")
       .order("created_at", { ascending: false }),
     supabase
@@ -34,11 +35,55 @@ export default async function Dashboard() {
     return acc + Math.max(0, Number(j.total_amount) - paid);
   }, 0);
 
+  // ---- Needs attention ----
+  const h = await headers();
+  const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("x-forwarded-host") ?? h.get("host")}`;
+  const daysAgo = (iso: string | null | undefined) => (iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 864e5) : 0);
+  const wa = (phone: string | null | undefined, text: string) =>
+    `https://wa.me/${(phone ?? "").replace(/\D/g, "").replace(/^(\d{10})$/, "91$1")}?text=${encodeURIComponent(text)}`;
+  type Item = { job: NonNullable<typeof jobs>[number]; kind: string; text: string; wa?: string; tone: "warn" | "bad" };
+  const attention: Item[] = [];
+  for (const j of jobs ?? []) {
+    const c = j.clients as unknown as { couple_names: string; phone: string } | null;
+    const portal = `${origin}/portal/${j.portal_token}`;
+    const proofs = (j.proofs as { created_at: string }[]) ?? [];
+    const vers = ((j.album_versions as { version: number; status: string; sent_at: string | null }[]) ?? []).sort((a, b) => b.version - a.version);
+    const latest = vers[0];
+    const paid = (j.payments as { amount: number }[]).reduce((a, p) => a + Number(p.amount), 0);
+    const balance = Number(j.total_amount) - paid;
+    const dl = (Array.isArray(j.deliveries) ? j.deliveries[0] : j.deliveries) as { gallery_sent_at: string | null; album_handover_at: string | null; client_confirmed_at: string | null } | null;
+    const pos = (j.print_orders as { expected_on: string | null; received_on: string | null; vendor: string | null }[]) ?? [];
+
+    if (proofs.length && !j.selection_submitted_at) {
+      const d = daysAgo(proofs.map((p) => p.created_at).sort().pop());
+      if (d >= 7) attention.push({ job: j, kind: "Selection idle", text: `Client hasn't submitted picks — proofs sent ${d} days ago`, tone: d >= 14 ? "bad" : "warn",
+        wa: wa(c?.phone, `Hi ${c?.couple_names}! Gentle reminder to pick your album photos when you get a moment: ${portal}`) });
+    }
+    if (latest && (latest.status === "sent") && daysAgo(latest.sent_at) >= 7) {
+      const d = daysAgo(latest.sent_at);
+      attention.push({ job: j, kind: "Album review idle", text: `Draft v${latest.version} with client for ${d} days`, tone: d >= 14 ? "bad" : "warn",
+        wa: wa(c?.phone, `Hi ${c?.couple_names}! Your album draft v${latest.version} is waiting for your review: ${portal}`) });
+    }
+    if (latest && latest.status === "changes_requested") attention.push({ job: j, kind: "Changes requested", text: `Client asked for changes on v${latest.version} — new draft needed`, tone: "warn" });
+    if (j.stage === "post" && j.photos_due && j.photos_due < today) attention.push({ job: j, kind: "Photos overdue", text: `Due ${fmtDate(j.photos_due)}`, tone: "bad" });
+    if (j.stage === "album" && j.album_due && j.album_due < today && !j.album_approved_at) attention.push({ job: j, kind: "Album overdue", text: `Approval due ${fmtDate(j.album_due)}`, tone: "bad" });
+    for (const po of pos) if (!po.received_on && po.expected_on && po.expected_on < today) attention.push({ job: j, kind: "Print late", text: `${po.vendor ?? "Vendor"} expected ${fmtDate(po.expected_on)}`, tone: "warn" });
+    if (balance > 0 && ["album", "delivered"].includes(j.stage)) attention.push({ job: j, kind: "Balance due", text: `${inr(balance)} outstanding`, tone: "warn",
+      wa: wa(c?.phone, `Hi ${c?.couple_names}! A reminder that the balance of ${inr(balance)} is due before delivery. Thank you!`) });
+    if (j.stage === "delivered" && dl && (dl.gallery_sent_at || dl.album_handover_at) && !dl.client_confirmed_at && daysAgo(dl.album_handover_at ?? dl.gallery_sent_at) >= 7)
+      attention.push({ job: j, kind: "Delivery unconfirmed", text: `Delivered ${daysAgo(dl.album_handover_at ?? dl.gallery_sent_at)} days ago — ask client to confirm`, tone: "warn",
+        wa: wa(c?.phone, `Hi ${c?.couple_names}! Hope you loved everything. Could you confirm receipt here? ${portal}`) });
+  }
+  attention.sort((a, b) => (a.tone === b.tone ? 0 : a.tone === "bad" ? -1 : 1));
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Jobs</h1>
-        <Link href="/jobs/new" className="btn-primary">+ New job</Link>
+        <div className="flex gap-2">
+          <Link href="/jobs/import" className="btn-ghost">Import CSV</Link>
+          <Link href="/jobs/new" className="btn-primary">+ New job</Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -47,6 +92,23 @@ export default async function Dashboard() {
         <Stat label="Overdue deliveries" value={String(overdue.length)} tone={overdue.length ? "bad" : undefined} />
         <Stat label="Balance outstanding" value={inr(outstanding)} />
       </div>
+
+      {attention.length > 0 && (
+        <section className="card border-amber-200">
+          <h2 className="mb-2 text-sm font-semibold">Needs attention <span className="font-normal text-muted">· {attention.length}</span></h2>
+          <ul className="divide-y divide-line text-sm">
+            {attention.map((a, i) => (
+              <li key={i} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5">
+                <span className={`chip ${a.tone === "bad" ? "bg-red-100 text-red-800" : "bg-soft"}`}>{a.kind}</span>
+                <Link href={`/jobs/${a.job.id}`} className="font-medium hover:underline">#{a.job.job_no} {a.job.title}</Link>
+                <span className="text-muted">{a.text}</span>
+                {a.wa && <a href={a.wa} target="_blank" className="ml-auto text-xs text-accent hover:underline">WhatsApp →</a>}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-muted">Reminders are one tap for now; they become automatic once the WhatsApp Business API is connected.</p>
+        </section>
+      )}
 
       {upcoming && upcoming.length > 0 && (
         <section className="card">

@@ -4,6 +4,7 @@ import { STAGES, STAGE_LABEL, Stage, fmtDate, inr } from "@/lib/constants";
 import JobClient from "./ui";
 import PostPanel from "./post";
 import AlbumPanel from "./album";
+import CostingCard from "./costing";
 import { headers } from "next/headers";
 
 
@@ -12,7 +13,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const { profile } = await requireProfile();
   const supabase = await createClient();
 
-  const [{ data: job }, { data: profiles }, { data: invites }, { data: log }, { data: tasks }, { data: proofs }, { data: versions }, { data: printOrders }, { data: delivery }, { data: biz }] = await Promise.all([
+  const [{ data: job }, { data: profiles }, { data: invites }, { data: log }, { data: tasks }, { data: proofs }, { data: versions }, { data: printOrders }, { data: delivery }, { data: biz }, { data: costs }] = await Promise.all([
     supabase
       .from("jobs")
       .select(
@@ -30,6 +31,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     supabase.from("print_orders").select("*").eq("job_id", id).order("ordered_on"),
     supabase.from("deliveries").select("*").eq("job_id", id).maybeSingle(),
     supabase.from("settings").select("value").eq("key", "business").single(),
+    supabase.from("job_costs").select("*").eq("job_id", id).single(),
   ]);
   const h = await headers();
   const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("x-forwarded-host") ?? h.get("host")}`;
@@ -104,6 +106,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             reviewUrl={((biz?.value as { review_url?: string } | null)?.review_url) ?? ""}
           />
         ) : null}
+        costing={isMgmt && costs ? <CostingCard jobId={job.id} c={costs} note={job.other_costs_note} isMgmt={isMgmt} /> : null}
       />
     </div>
   );

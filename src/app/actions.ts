@@ -572,3 +572,82 @@ export async function saveBusiness(_: Result | null, fd: FormData): Promise<Resu
   revalidatePath("/team");
   return { ok: true };
 }
+
+// ---------- Phase 4 ----------
+export async function saveOtherCosts(_: Result | null, fd: FormData): Promise<Result> {
+  const supabase = await createClient();
+  const jobId = s(fd, "job_id")!;
+  const { error } = await supabase.from("jobs").update({ other_costs: n(fd, "other_costs") ?? 0, other_costs_note: s(fd, "other_costs_note") }).eq("id", jobId);
+  if (error) return { error: error.message };
+  revalidatePath(`/jobs/${jobId}`);
+  return { ok: true };
+}
+
+/** Minimal CSV parser (handles quoted fields, CRLF). */
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [], cell = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; }
+      else cell += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ",") { row.push(cell); cell = ""; }
+    else if (ch === "\n" || ch === "\r") { if (ch === "\r" && text[i + 1] === "\n") i++; row.push(cell); rows.push(row); row = []; cell = ""; }
+    else cell += ch;
+  }
+  if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter((r) => r.some((c) => c.trim() !== ""));
+}
+
+export type ImportPreview = { headers: string[]; rows: Record<string, string>[]; errors: string[] };
+
+export async function previewImport(_: ImportPreview | null, fd: FormData): Promise<ImportPreview> {
+  const file = fd.get("file");
+  if (!(file instanceof File)) return { headers: [], rows: [], errors: ["No file"] };
+  const text = await file.text();
+  const parsed = parseCsv(text.replace(/^﻿/, ""));
+  if (parsed.length < 2) return { headers: [], rows: [], errors: ["CSV has no data rows"] };
+  const headers = parsed[0].map((h) => h.trim().toLowerCase().replace(/\s+/g, "_"));
+  const rows = parsed.slice(1).map((r) => Object.fromEntries(headers.map((h, i) => [h, (r[i] ?? "").trim()])));
+  const errors: string[] = [];
+  if (!headers.includes("couple_names")) errors.push("Missing column: couple_names");
+  if (!headers.includes("phone")) errors.push("Missing column: phone");
+  rows.forEach((r, i) => { if (!r.couple_names || !r.phone) errors.push(`Row ${i + 2}: couple_names and phone are required`); });
+  return { headers, rows, errors };
+}
+
+export async function runImport(rows: Record<string, string>[]): Promise<{ created: number; errors: string[] }> {
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  let created = 0; const errors: string[] = [];
+  for (const [i, r] of rows.entries()) {
+    try {
+      const { data: client, error: ce } = await supabase.from("clients").insert({ couple_names: r.couple_names, phone: r.phone, email: r.email || null, city: r.city || null }).select("id").single();
+      if (ce) throw ce;
+      const { data: job, error: je } = await supabase.from("jobs").insert({
+        client_id: client.id, title: r.title || r.couple_names, package_summary: r.package_summary || null,
+        total_amount: Number(r.total_amount || 0), album_photo_count: r.album_photo_count ? Number(r.album_photo_count) : null,
+        pixieset_url: r.pixieset_url || null, booked_on: r.booked_on || iso(new Date()), notes: r.notes || null, created_by: auth.user?.id,
+      }).select("id").single();
+      if (je) throw je;
+      if (Number(r.advance || 0) > 0) await supabase.from("payments").insert({ job_id: job.id, amount: Number(r.advance), method: "upi", received_on: r.booked_on || iso(new Date()), note: "Advance (import)", recorded_by: auth.user?.id });
+      for (const k of [1, 2, 3, 4]) {
+        const t = (r[`event${k}_type`] || "").toLowerCase().replace(/\s+/g, "_");
+        if (!t && !r[`event${k}_date`]) continue;
+        const known = ["engagement", "reception", "muhurtham", "rituals", "baby_shower"];
+        await supabase.from("events").insert({
+          job_id: job.id, type: known.includes(t) ? t : "other", custom_name: known.includes(t) ? null : (r[`event${k}_type`] || null),
+          event_date: r[`event${k}_date`] || null, venue: r[`event${k}_venue`] || null, city: r[`event${k}_city`] || null,
+        });
+      }
+      await recomputeDueDates(job.id);
+      created++;
+    } catch (e: unknown) {
+      errors.push(`Row ${i + 2} (${r.couple_names}): ${(e as { message?: string }).message ?? String(e)}`);
+    }
+  }
+  revalidatePath("/");
+  return { created, errors };
+}
