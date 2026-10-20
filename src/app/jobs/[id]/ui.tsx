@@ -228,19 +228,17 @@ function EventForm({ jobId, ev, onDone }: { jobId: string; ev?: any; onDone?: ()
           <label className="f">Date</label>
           <input name="event_date" type="date" defaultValue={ev?.event_date ?? ""} required />
         </div>
-        <div className="flex flex-wrap gap-4 md:col-span-4">
-          <div>
-            <label className="f">Start</label>
-            <TimeSelect name="start_time" defaultValue={ev?.start_time?.slice(0, 5) ?? ""} />
-          </div>
-          <div>
-            <label className="f">End</label>
-            <TimeSelect name="end_time" defaultValue={ev?.end_time?.slice(0, 5) ?? ""} />
-          </div>
-          <div>
-            <label className="f">Call time (crew arrives)</label>
-            <TimeSelect name="call_time" defaultValue={ev?.call_time?.slice(0, 5) ?? ""} />
-          </div>
+        <div>
+          <label className="f">Start</label>
+          <TimeSelect name="start_time" defaultValue={ev?.start_time?.slice(0, 5) ?? ""} />
+        </div>
+        <div>
+          <label className="f">End</label>
+          <TimeSelect name="end_time" defaultValue={ev?.end_time?.slice(0, 5) ?? ""} />
+        </div>
+        <div>
+          <label className="f">Call time</label>
+          <TimeSelect name="call_time" defaultValue={ev?.call_time?.slice(0, 5) ?? ""} />
         </div>
         <div className="md:col-span-2">
           <label className="f">Venue</label>
@@ -424,9 +422,9 @@ function TimeSelect({ name, defaultValue }: { name: string; defaultValue: string
   };
   const [t, setT] = useState(parse(defaultValue));
   const value = t.h ? `${String((Number(t.h) % 12) + (t.ap === "PM" ? 12 : 0)).padStart(2, "0")}:${t.m}` : "";
-  const sel = "w-auto min-w-16 px-2 py-2 text-base";
+  const sel = "w-auto px-2 py-1.5";
   return (
-    <div className="flex gap-1.5">
+    <div className="flex gap-1">
       <input type="hidden" name={name} value={value} />
       <select className={sel} value={t.h} onChange={(e) => setT({ ...t, h: e.target.value })}>
         <option value="">--</option>
