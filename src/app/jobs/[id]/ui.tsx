@@ -230,15 +230,15 @@ function EventForm({ jobId, ev, onDone }: { jobId: string; ev?: any; onDone?: ()
         </div>
         <div>
           <label className="f">Start</label>
-          <input name="start_time" type="time" step={1800} defaultValue={ev?.start_time?.slice(0, 5) ?? ""} />
+          <input name="start_time" type="time" defaultValue={ev?.start_time?.slice(0, 5) ?? ""} />
         </div>
         <div>
           <label className="f">End</label>
-          <input name="end_time" type="time" step={1800} defaultValue={ev?.end_time?.slice(0, 5) ?? ""} />
+          <input name="end_time" type="time" defaultValue={ev?.end_time?.slice(0, 5) ?? ""} />
         </div>
         <div>
           <label className="f">Call time</label>
-          <input name="call_time" type="time" step={1800} defaultValue={ev?.call_time?.slice(0, 5) ?? ""} />
+          <input name="call_time" type="time" defaultValue={ev?.call_time?.slice(0, 5) ?? ""} />
         </div>
         <div className="md:col-span-2">
           <label className="f">Venue</label>
