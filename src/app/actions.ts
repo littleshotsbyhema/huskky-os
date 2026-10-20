@@ -177,6 +177,16 @@ export async function setStage(jobId: string, stage: Stage): Promise<Result> {
   return { ok: true };
 }
 
+export async function deleteJob(jobId: string): Promise<Result> {
+  const supabase = await createClient();
+  const { data: job } = await supabase.from("jobs").select("client_id").eq("id", jobId).single();
+  const { error } = await supabase.from("jobs").delete().eq("id", jobId);
+  if (error) return { error: error.message };
+  if (job?.client_id) await supabase.from("clients").delete().eq("id", job.client_id);
+  revalidatePath("/");
+  redirect("/");
+}
+
 export async function advanceStage(jobId: string, current: Stage) {
   const i = STAGES.indexOf(current);
   if (i < 0 || i === STAGES.length - 1) return { error: "Already closed." };

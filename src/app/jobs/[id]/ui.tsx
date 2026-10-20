@@ -2,7 +2,7 @@
 
 import { useActionState, useState, useTransition } from "react";
 import {
-  addAssignment, addPayment, advanceStage, deleteEvent, deletePayment, removeAssignment,
+  addAssignment, addPayment, advanceStage, deleteEvent, deleteJob, deletePayment, removeAssignment,
   saveIngest, setStage, toggleConfirm, updateJob, upsertEvent,
 } from "@/app/actions";
 import {
@@ -112,6 +112,16 @@ export default function JobClient({ job, people, isMgmt, log }: Props) {
             ))}
           </ul>
         </section>
+
+        {isMgmt && (
+          <button
+            className="btn-danger w-full text-xs"
+            disabled={pending}
+            onClick={() => { if (confirm(`Delete job "${job.title}" and everything in it? This cannot be undone.`)) run(() => deleteJob(job.id)); }}
+          >
+            Delete this job
+          </button>
+        )}
       </div>
     </div>
   );
