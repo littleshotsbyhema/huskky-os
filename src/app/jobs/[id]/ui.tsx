@@ -8,6 +8,8 @@ import {
 import {
   CREW_LABEL, CREW_ROLES, EVENT_LABEL, EVENT_TYPES, PAYMENT_METHODS, STAGES, STAGE_LABEL, Stage, fmtDate, inr,
 } from "@/lib/constants";
+import DeliverablesForm from "@/components/DeliverablesForm";
+import { COVERAGE, COVERAGE_ROLE, coverageText, deliverablesText, type Coverage } from "@/lib/package";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Person = { key: string; name: string; role: string; rate: number | null; freelance: boolean };
@@ -168,7 +170,11 @@ function EventCard({ ev, jobId, people, isMgmt, stage }: { ev: any; jobId: strin
           </span>
         )}
       </div>
-      {ev.crew_notes && <p className="text-sm"><span className="text-muted">Crew required: </span>{ev.crew_notes}</p>}
+      {coverageText(ev.coverage) && <p className="text-sm"><span className="text-muted">Coverage: </span>{coverageText(ev.coverage)}</p>}
+      {coverageText(ev.coverage) && (
+        <p className="text-xs text-muted">Crew required: {COVERAGE.filter(([k]) => ((ev.coverage as Coverage)[k] ?? 0) > 0).map(([k]) => `${(ev.coverage as Coverage)[k]}× ${COVERAGE_ROLE[k]}`).join(", ")}</p>
+      )}
+      {ev.crew_notes && <p className="text-sm"><span className="text-muted">Notes on crew: </span>{ev.crew_notes}</p>}
       {ev.notes && <p className="text-sm text-muted">{ev.notes}</p>}
 
       {/* Crew */}
@@ -264,7 +270,18 @@ function EventForm({ jobId, ev, onDone }: { jobId: string; ev?: any; onDone?: ()
           <label htmlFor={`ov-${ev?.id ?? "new"}`} className="text-sm">Overnight stay</label>
         </div>
         <div className="md:col-span-4">
-          <label className="f">Photographer crew required (free text, differs per event)</label>
+          <label className="f">Coverage for this event (count per service)</label>
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+            {COVERAGE.map(([k, label]) => (
+              <label key={k} className="flex items-center gap-2 text-sm">
+                <input name={`c_${k}`} type="number" min={0} className="w-14 px-2 py-1" defaultValue={(ev?.coverage as Coverage | undefined)?.[k] ?? ""} placeholder="0" />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="md:col-span-4">
+          <label className="f">Extra crew notes (free text)</label>
           <input name="crew_notes" defaultValue={ev?.crew_notes ?? ""} placeholder="e.g. 2 candid + 1 traditional + drone, 1 cinematographer" />
         </div>
         <div className="md:col-span-4">
@@ -386,18 +403,23 @@ function JobEdit({ job, isMgmt }: { job: any; isMgmt: boolean }) {
           <h2 className="font-semibold">Package</h2>
           {isMgmt && <button className="text-xs text-muted hover:text-fg" onClick={() => setOpen(true)}>Edit</button>}
         </div>
-        <p className="whitespace-pre-wrap">{job.package_summary || <span className="text-muted">—</span>}</p>
-        {job.album_photo_count && <p className="mt-1 text-muted">Album: {job.album_photo_count} photos · {job.revision_rounds_included} revision rounds</p>}
+        <p>{deliverablesText(job.deliverables) || <span className="text-muted">No deliverables recorded — edit to add.</span>}</p>
+        {job.deliverables?.notes && <p className="mt-1 text-muted">{job.deliverables.notes}</p>}
+        {job.package_summary && <p className="mt-1 whitespace-pre-wrap text-muted">{job.package_summary}</p>}
+        {job.album_photo_count && <p className="mt-1 text-muted">Album selection: {job.album_photo_count} photos · {job.revision_rounds_included} revision rounds</p>}
         {job.pixieset_url && <a href={job.pixieset_url} target="_blank" className="mt-1 block text-accent hover:underline">Pixieset ↗</a>}
         {job.notes && <p className="mt-2 text-xs text-muted">{job.notes}</p>}
       </section>
     );
   return (
-    <form action={action} className="card space-y-2 text-sm">
+    <div className="fixed inset-0 z-30 overflow-y-auto bg-black/40 p-4" onClick={() => setOpen(false)}>
+    <form action={action} className="card mx-auto max-w-3xl space-y-3 text-sm" onClick={(e) => e.stopPropagation()}>
+      <h2 className="font-semibold">Edit job &amp; package</h2>
       <input type="hidden" name="id" value={job.id} />
       <div><label className="f">Title</label><input name="title" defaultValue={job.title} /></div>
-      <div><label className="f">Package summary</label><textarea name="package_summary" rows={3} defaultValue={job.package_summary ?? ""} /></div>
-      <div className="grid grid-cols-2 gap-2">
+      <DeliverablesForm value={job.deliverables} />
+      <div><label className="f">Legacy package summary (free text)</label><textarea name="package_summary" rows={2} defaultValue={job.package_summary ?? ""} /></div>
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
         <div><label className="f">Total ₹</label><input name="total_amount" type="number" defaultValue={job.total_amount} /></div>
         <div><label className="f">Album photos</label><input name="album_photo_count" type="number" defaultValue={job.album_photo_count ?? ""} /></div>
         <div><label className="f">Photos due</label><input name="photos_due" type="date" defaultValue={job.photos_due ?? ""} /></div>
@@ -412,5 +434,6 @@ function JobEdit({ job, isMgmt }: { job: any; isMgmt: boolean }) {
         <button className="btn-primary" disabled={pending}>Save</button>
       </div>
     </form>
+    </div>
   );
 }

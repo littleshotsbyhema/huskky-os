@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { STAGES, Stage, addDays, addWorkingDays, iso } from "@/lib/constants";
+import { coverageFromForm, deliverablesFromForm } from "@/lib/package";
 
 type Result = { error?: string; ok?: boolean };
 
@@ -67,6 +68,7 @@ export async function createJob(_: Result | null, fd: FormData): Promise<Result>
       client_id: client.id,
       title: s(fd, "title") ?? s(fd, "couple_names"),
       package_summary: s(fd, "package_summary"),
+      deliverables: deliverablesFromForm(fd),
       total_amount: n(fd, "total_amount") ?? 0,
       album_photo_count: n(fd, "album_photo_count"),
       pixieset_url: s(fd, "pixieset_url"),
@@ -101,6 +103,7 @@ export async function updateJob(_: Result | null, fd: FormData): Promise<Result>
     .update({
       title: s(fd, "title"),
       package_summary: s(fd, "package_summary"),
+      deliverables: deliverablesFromForm(fd),
       total_amount: n(fd, "total_amount") ?? 0,
       album_photo_count: n(fd, "album_photo_count"),
       pixieset_url: s(fd, "pixieset_url"),
@@ -166,12 +169,14 @@ export async function setStage(jobId: string, stage: Stage): Promise<Result> {
     if (il.length) return { error: "Confirm ingest for every event before moving to Post." };
   }
   if (stage === "album") {
-    const { data: job } = await supabase.from("jobs").select("selection_submitted_at").eq("id", jobId).single();
-    if (!job?.selection_submitted_at) return { error: "Client has not submitted their album selection yet." };
+    const { data: job } = await supabase.from("jobs").select("selection_received_at, deliverables").eq("id", jobId).single();
+    const hasAlbum = (((job?.deliverables as { albums?: unknown[] })?.albums) ?? []).length > 0;
+    if (hasAlbum && !job?.selection_received_at) return { error: "Mark the Pixieset album selection as received first." };
   }
   if (stage === "delivered") {
     const { data: job } = await supabase.from("jobs").select("total_amount, album_photo_count, album_approved_at, payments(amount), album_versions(id)").eq("id", jobId).single();
-    const hasAlbum = !!job?.album_photo_count || ((job?.album_versions as unknown[]) ?? []).length > 0;
+    const { data: j2 } = await supabase.from("jobs").select("deliverables").eq("id", jobId).single();
+    const hasAlbum = ((((j2?.deliverables as { albums?: unknown[] })?.albums) ?? []).length > 0) || ((job?.album_versions as unknown[]) ?? []).length > 0;
     if (hasAlbum && !job?.album_approved_at) return { error: "The album has not been approved by the client yet." };
     const paid = (job?.payments as { amount: number }[] | undefined)?.reduce((a, p) => a + Number(p.amount), 0) ?? 0;
     if (paid < Number(job?.total_amount ?? 0)) return { error: `Balance outstanding: ₹${(Number(job?.total_amount) - paid).toLocaleString("en-IN")}. Record the final payment first.` };
@@ -219,6 +224,7 @@ export async function upsertEvent(_: Result | null, fd: FormData): Promise<Resul
     venue: s(fd, "venue"),
     map_url: s(fd, "map_url"),
     crew_notes: s(fd, "crew_notes"),
+    coverage: coverageFromForm(fd),
     city: s(fd, "city"),
     overnight: fd.get("overnight") === "on",
     travel_cost: n(fd, "travel_cost") ?? 0,
@@ -650,4 +656,13 @@ export async function runImport(rows: Record<string, string>[]): Promise<{ creat
   }
   revalidatePath("/");
   return { created, errors };
+}
+
+
+export async function setSelectionReceived(jobId: string, received: boolean, url: string | null) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("jobs").update({ selection_received_at: received ? iso(new Date()) : null, selection_url: url }).eq("id", jobId);
+  if (error) return { error: error.message };
+  revalidatePath(`/jobs/${jobId}`);
+  return { ok: true };
 }

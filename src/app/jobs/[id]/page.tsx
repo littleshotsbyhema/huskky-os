@@ -13,7 +13,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const { profile } = await requireProfile();
   const supabase = await createClient();
 
-  const [{ data: job }, { data: profiles }, { data: invites }, { data: log }, { data: tasks }, { data: proofs }, { data: versions }, { data: printOrders }, { data: delivery }, { data: biz }, { data: costs }] = await Promise.all([
+  const [{ data: job }, { data: profiles }, { data: invites }, { data: log }, { data: tasks }, { data: versions }, { data: printOrders }, { data: delivery }, { data: biz }, { data: costs }] = await Promise.all([
     supabase
       .from("jobs")
       .select(
@@ -26,7 +26,6 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     supabase.from("crew_invites").select("id, full_name, role, day_rate, is_freelance").eq("active", true).is("profile_id", null).order("full_name"),
     supabase.from("job_stage_log").select("to_stage, changed_at, profiles(full_name)").eq("job_id", id).order("changed_at", { ascending: false }),
     supabase.from("post_tasks").select("*, profiles(full_name)").eq("job_id", id),
-    supabase.from("proofs").select("id, path, filename, picked").eq("job_id", id).order("sort"),
     supabase.from("album_versions").select("*, album_comments(*)").eq("job_id", id).order("version"),
     supabase.from("print_orders").select("*").eq("job_id", id).order("ordered_on"),
     supabase.from("deliveries").select("*").eq("job_id", id).maybeSingle(),
@@ -88,7 +87,6 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           <PostPanel
             job={job}
             tasks={(tasks ?? []) as never}
-            proofs={proofs ?? []}
             team={(profiles ?? []).map((p) => ({ id: p.id, full_name: p.full_name }))}
             meId={profile?.id ?? ""}
             isMgmt={isMgmt}

@@ -12,7 +12,7 @@ export default async function Dashboard() {
   const [{ data: jobs }, { data: upcoming }] = await Promise.all([
     supabase
       .from("jobs")
-      .select("id, job_no, title, stage, total_amount, photos_due, film_due, album_due, portal_token, selection_submitted_at, album_approved_at, clients(couple_names, phone), events(event_date), payments(amount), proofs(id, created_at), album_versions(version, status, sent_at), print_orders(expected_on, received_on, vendor), deliveries(gallery_sent_at, album_handover_at, client_confirmed_at)")
+      .select("id, job_no, title, stage, total_amount, photos_due, film_due, album_due, portal_token, selection_received_at, deliverables, album_approved_at, clients(couple_names, phone), events(event_date), payments(amount), post_tasks(key, status, done_at), album_versions(version, status, sent_at), print_orders(expected_on, received_on, vendor), deliveries(gallery_sent_at, album_handover_at, client_confirmed_at)")
       .neq("stage", "closed")
       .order("created_at", { ascending: false }),
     supabase
@@ -46,7 +46,8 @@ export default async function Dashboard() {
   for (const j of jobs ?? []) {
     const c = j.clients as unknown as { couple_names: string; phone: string } | null;
     const portal = `${origin}/portal/${j.portal_token}`;
-    const proofs = (j.proofs as { created_at: string }[]) ?? [];
+    const hasAlbum = (((j.deliverables as { albums?: unknown[] })?.albums) ?? []).length > 0;
+    const upload = ((j.post_tasks as { key: string; status: string; done_at: string | null }[]) ?? []).find((t) => t.key === "upload" && t.status === "done");
     const vers = ((j.album_versions as { version: number; status: string; sent_at: string | null }[]) ?? []).sort((a, b) => b.version - a.version);
     const latest = vers[0];
     const paid = (j.payments as { amount: number }[]).reduce((a, p) => a + Number(p.amount), 0);
@@ -54,10 +55,10 @@ export default async function Dashboard() {
     const dl = (Array.isArray(j.deliveries) ? j.deliveries[0] : j.deliveries) as { gallery_sent_at: string | null; album_handover_at: string | null; client_confirmed_at: string | null } | null;
     const pos = (j.print_orders as { expected_on: string | null; received_on: string | null; vendor: string | null }[]) ?? [];
 
-    if (proofs.length && !j.selection_submitted_at) {
-      const d = daysAgo(proofs.map((p) => p.created_at).sort().pop());
-      if (d >= 7) attention.push({ job: j, kind: "Selection idle", text: `Client hasn't submitted picks — proofs sent ${d} days ago`, tone: d >= 14 ? "bad" : "warn",
-        wa: wa(c?.phone, `Hi ${c?.couple_names}! Gentle reminder to pick your album photos when you get a moment: ${portal}`) });
+    if (hasAlbum && upload && !j.selection_received_at) {
+      const d = daysAgo(upload.done_at);
+      if (d >= 7) attention.push({ job: j, kind: "Selection idle", text: `Album picks not received — gallery up ${d} days ago`, tone: d >= 14 ? "bad" : "warn",
+        wa: wa(c?.phone, `Hi ${c?.couple_names}! Gentle reminder to pick your album favourites on your Pixieset gallery when you get a moment. Thank you!`) });
     }
     if (latest && (latest.status === "sent") && daysAgo(latest.sent_at) >= 7) {
       const d = daysAgo(latest.sent_at);

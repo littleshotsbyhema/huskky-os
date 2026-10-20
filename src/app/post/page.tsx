@@ -9,7 +9,7 @@ export default async function PostQueue() {
 
   const { data: jobs } = await supabase
     .from("jobs")
-    .select("id, job_no, title, stage, photos_due, film_due, album_due, album_photo_count, selection_submitted_at, events(event_date), post_tasks(id, track, status, assignee_id, label, sort, profiles(full_name)), proofs(id, picked)")
+    .select("id, job_no, title, stage, photos_due, film_due, album_due, album_photo_count, selection_received_at, deliverables, events(event_date), post_tasks(id, key, track, status, assignee_id, label, sort, done_at, profiles(full_name))")
     .in("stage", ["shot", "post", "album"])
     .order("photos_due", { ascending: true, nullsFirst: false });
 
@@ -20,10 +20,11 @@ export default async function PostQueue() {
     const pct = (ts: typeof tasks) => (ts.length ? Math.round((ts.filter((t) => t.status === "done").length / ts.length) * 100) : 0);
     const next = (ts: typeof tasks) => ts.sort((a, b) => a.sort - b.sort).find((t) => t.status !== "done");
     const people = Array.from(new Set(tasks.map((t) => t.profiles?.full_name).filter(Boolean))) as string[];
-    const proofs = (j.proofs as { id: string; picked: boolean }[]) ?? [];
+    const hasAlbum = (((j.deliverables as { albums?: unknown[] })?.albums) ?? []).length > 0;
+    const uploaded = tasks.some((t) => t.key === "upload" && t.status === "done");
     const lastEvent = ((j.events as { event_date: string | null }[]) ?? []).map((e) => e.event_date).filter(Boolean).sort().pop();
     const mine = tasks.some((t) => t.assignee_id === profile?.id);
-    return { j, photo, video, pct, next, people, proofs, lastEvent, mine };
+    return { j, photo, video, pct, next, people, hasAlbum, uploaded, lastEvent, mine };
   });
 
   const mineFirst = [...rows].sort((a, b) => Number(b.mine) - Number(a.mine));
@@ -36,7 +37,7 @@ export default async function PostQueue() {
       </div>
       {rows.length === 0 && <p className="card text-sm text-muted">Nothing in the queue.</p>}
       <div className="space-y-2">
-        {mineFirst.map(({ j, photo, video, pct, next, people, proofs, lastEvent, mine }) => {
+        {mineFirst.map(({ j, photo, video, pct, next, people, hasAlbum, uploaded, lastEvent, mine }) => {
           const late = j.photos_due && j.photos_due < today && pct(photo) < 100;
           return (
             <Link key={j.id} href={`/jobs/${j.id}`} className={`card block hover:border-accent ${late ? "border-red-300" : ""} ${mine ? "bg-soft/30" : ""}`}>
@@ -52,11 +53,12 @@ export default async function PostQueue() {
                 <Bar label="Photos" pct={pct(photo)} next={next(photo)?.label} />
                 <Bar label="Film" pct={pct(video)} next={next(video)?.label} />
                 <div>
-                  <div className="flex justify-between text-muted"><span>Selection</span><span>{proofs.filter((p) => p.picked).length}{j.album_photo_count ? `/${j.album_photo_count}` : ""}</span></div>
+                  <div className="flex justify-between text-muted"><span>Album selection</span><span>{j.album_photo_count ? `${j.album_photo_count} photos` : ""}</span></div>
                   <div className="mt-1">
-                    {j.selection_submitted_at ? <span className="chip bg-green-100 text-green-800">submitted</span>
-                      : proofs.length ? <span className="chip bg-soft">waiting for client</span>
-                      : <span className="chip border border-line text-muted">no proofs yet</span>}
+                    {!hasAlbum ? <span className="chip border border-line text-muted">no album</span>
+                      : j.selection_received_at ? <span className="chip bg-green-100 text-green-800">received</span>
+                      : uploaded ? <span className="chip bg-soft">waiting for client</span>
+                      : <span className="chip border border-line text-muted">gallery not up yet</span>}
                   </div>
                 </div>
               </div>

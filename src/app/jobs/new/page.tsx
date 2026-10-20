@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { createJob } from "@/app/actions";
 import { PAYMENT_METHODS } from "@/lib/constants";
+import DeliverablesForm from "@/components/DeliverablesForm";
 
 export default function NewJob() {
   const [state, action, pending] = useActionState(createJob, null);
@@ -37,16 +38,17 @@ export default function NewJob() {
             <label className="f">Job title</label>
             <input name="title" placeholder="Defaults to couple names" />
           </div>
-          <div className="md:col-span-2">
-            <label className="f">Package summary (what was sold)</label>
-            <textarea name="package_summary" rows={3} placeholder="Traditional + candid photo, cinematic film, drone, 1 album 12x36 40 sheets" />
+          <div className="md:col-span-2 rounded-lg border border-line p-3">
+            <div className="mb-2 text-sm font-semibold">What was sold</div>
+            <DeliverablesForm />
+            <p className="mt-2 text-xs text-muted">Coverage (traditional / candid / cinematography / drone…) is set per event after the job is created, since it differs by event.</p>
           </div>
           <div>
             <label className="f">Total amount (₹) *</label>
             <input name="total_amount" type="number" min={0} required />
           </div>
           <div>
-            <label className="f">Album photo count</label>
+            <label className="f">Album photo count (for Pixieset selection)</label>
             <input name="album_photo_count" type="number" min={0} placeholder="e.g. 250" />
           </div>
           <div>
